@@ -51,7 +51,7 @@ export default function CaseStudy() {
                 <span className="text-primary">Defended by Math.</span>
               </h2>
               <p className="text-gray-400 text-lg leading-relaxed">
-                See how leading hedge funds are using ConfidentialRebalancingHook to execute large-scale portfolio adjustments without tipping their hand to the market.
+                See how leading hedge funds are using Umbra finance to execute large-scale portfolio adjustments without tipping their hand to the market.
               </p>
               <button className="flex w-fit items-center justify-center rounded-lg h-12 px-6 bg-white text-black hover:bg-gray-100 transition-colors font-bold mt-2">
                 Read the Full Case Study

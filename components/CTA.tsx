@@ -7,12 +7,17 @@ export default function CTA() {
             Ready to reclaim your alpha?
           </h2>
           <p className="text-gray-400 text-lg md:text-xl max-w-[600px]">
-            Start rebalancing confidentially on Uniswap v4 today. Schedule a demo with our engineering team.
+            Start rebalancing confidentially on Uniswap v4 today. <a href="https://calendly.com/bolarinwamuhdsodiq0/30min" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Schedule a demo</a> with our engineering team.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
-            <button className="flex cursor-pointer items-center justify-center rounded-lg h-14 px-8 bg-primary hover:bg-primary-dark text-white text-lg font-bold shadow-lg transition-colors w-full sm:w-auto">
-              Get Started Now
-            </button>
+            <a
+              href="https://calendly.com/bolarinwamuhdsodiq0/30min"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex cursor-pointer items-center justify-center rounded-lg h-14 px-8 bg-primary hover:bg-primary-dark text-white text-lg font-bold shadow-lg transition-colors w-full sm:w-auto"
+            >
+              Schedule a Demo
+            </a>
             <button className="flex cursor-pointer items-center justify-center rounded-lg h-14 px-8 bg-transparent hover:bg-[#282b39] border border-[#3b3f54] text-white text-lg font-bold transition-colors w-full sm:w-auto">
               Read Documentation
             </button>

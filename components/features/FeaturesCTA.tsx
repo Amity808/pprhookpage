@@ -5,7 +5,7 @@ export default function FeaturesCTA() {
       
       <div className="relative z-10 flex flex-col items-center gap-6">
         <h2 className="text-3xl md:text-4xl font-black text-white">Ready to deploy institutional strategies?</h2>
-        <p className="text-blue-100 max-w-xl text-lg">Integrate the ConfidentialRebalancingHook into your asset management workflow today. Open source and audit-ready.</p>
+        <p className="text-blue-100 max-w-xl text-lg">Integrate the Umbra finance into your asset management workflow today. Open source and audit-ready.</p>
         
         <div className="flex gap-4">
           <button className="bg-white text-primary hover:bg-gray-100 transition-colors text-base font-bold px-8 py-3 rounded-lg shadow-lg">

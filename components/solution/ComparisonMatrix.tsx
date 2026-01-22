@@ -9,7 +9,7 @@ export default function ComparisonMatrix() {
             <thead>
               <tr className="bg-surface-dark border-b border-[#282b39] text-sm uppercase tracking-wider text-[#9da1b9]">
                 <th className="p-4 md:p-6 font-medium">Feature</th>
-                <th className="p-4 md:p-6 font-bold text-white bg-primary/10 border-l border-r border-primary/20">ConfidentialRebalancingHook</th>
+                <th className="p-4 md:p-6 font-bold text-white bg-primary/10 border-l border-r border-primary/20">Umbra finance</th>
                 <th className="p-4 md:p-6 font-medium">Traditional Rebalancing</th>
                 <th className="p-4 md:p-6 font-medium">ZK Solutions</th>
               </tr>

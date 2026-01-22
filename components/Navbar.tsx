@@ -29,7 +29,7 @@ export default function Navbar() {
               <div className="size-8 flex items-center justify-center rounded bg-primary/20 text-primary">
                 <span className="material-symbols-outlined">security</span>
               </div>
-              <h2 className="text-white text-lg font-bold leading-tight tracking-tight">ConfidentialRebalancingHook</h2>
+              <h2 className="text-white text-lg font-bold leading-tight tracking-tight">Umbra finance</h2>
             </Link>
             <div className="hidden md:flex items-center gap-6">
               {navItems.map((item) => {
@@ -63,9 +63,14 @@ export default function Navbar() {
               })}
             </div>
             <div className="flex items-center gap-4">
-              <button className="flex cursor-pointer items-center justify-center overflow-hidden rounded-lg h-9 px-4 bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-bold leading-normal tracking-[0.015em]">
+              <a
+                href="https://calendly.com/bolarinwamuhdsodiq0/30min"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex cursor-pointer items-center justify-center overflow-hidden rounded-lg h-9 px-4 bg-primary hover:bg-primary/90 transition-colors text-white text-sm font-bold leading-normal tracking-[0.015em]"
+              >
                 <span className="truncate">Schedule a Demo</span>
-              </button>
+              </a>
             </div>
           </div>
         </div>

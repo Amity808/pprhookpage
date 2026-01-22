@@ -1,0 +1,565 @@
+# Examples
+
+Real-world examples demonstrating how to use Umbra Finance for various use cases.
+
+## Basic Portfolio Rebalancing
+
+A simple example of rebalancing a two-asset portfolio.
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import {UmbraFinance} from "./UmbraFinance.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {CFT} from "fhenix-contracts/FHE.sol";
+
+contract BasicRebalancing {
+    Umbra Finance public hook;
+    bytes32 public strategyId;
+    
+    Currency public usdc;
+    Currency public weth;
+    
+    constructor(address _hook, address _usdc, address _weth) {
+        hook = UmbraFinance(_hook);
+        usdc = Currency.wrap(_usdc);
+        weth = Currency.wrap(_weth);
+        
+        // Create strategy
+        strategyId = keccak256("basic-portfolio");
+        
+        InEuint128 memory window = CFT.createInEuint128(100, msg.sender);
+        InEuint128 memory spread = CFT.createInEuint128(10, msg.sender);
+        InEuint128 memory slippage = CFT.createInEuint128(50, msg.sender);
+        
+        hook.createStrategy(strategyId, 1000, window, spread, slippage);
+        
+        // Set 60/40 allocation (60% USDC, 40% WETH)
+        setAllocations();
+    }
+    
+    function setAllocations() internal {
+        // 60% USDC
+        InEuint128 memory usdcTarget = CFT.createInEuint128(6000, msg.sender);
+        InEuint128 memory usdcMin = CFT.createInEuint128(100, msg.sender);
+        InEuint128 memory usdcMax = CFT.createInEuint128(200, msg.sender);
+        
+        hook.setTargetAllocation(strategyId, usdc, usdcTarget, usdcMin, usdcMax);
+        
+        // 40% WETH
+        InEuint128 memory wethTarget = CFT.createInEuint128(4000, msg.sender);
+        InEuint128 memory wethMin = CFT.createInEuint128(100, msg.sender);
+        InEuint128 memory wethMax = CFT.createInEuint128(200, msg.sender);
+        
+        hook.setTargetAllocation(strategyId, weth, wethTarget, wethMin, wethMax);
+    }
+    
+    function updatePositions(uint256 usdcAmount, uint256 wethAmount) external {
+        InEuint128 memory usdcPos = CFT.createInEuint128(usdcAmount, msg.sender);
+        InEuint128 memory wethPos = CFT.createInEuint128(wethAmount, msg.sender);
+        
+        hook.setEncryptedPosition(strategyId, usdc, usdcPos);
+        hook.setEncryptedPosition(strategyId, weth, wethPos);
+    }
+    
+    function rebalance() external {
+        hook.calculateRebalancing(strategyId);
+        hook.executeRebalancing(strategyId);
+    }
+}
+```
+
+---
+
+## Multi-Asset Portfolio
+
+Managing a diversified portfolio with multiple assets.
+
+```solidity
+contract MultiAssetPortfolio {
+    Umbra Finance public hook;
+    bytes32 public strategyId;
+    
+    struct Asset {
+        Currency currency;
+        uint256 targetPercentage; // Basis points
+        uint256 minThreshold;
+        uint256 maxThreshold;
+    }
+    
+    Asset[] public assets;
+    
+    constructor(address _hook) {
+        hook = UmbraFinance(_hook);
+        strategyId = keccak256("multi-asset-portfolio");
+        
+        // Define portfolio: 40% USDC, 30% WETH, 20% WBTC, 10% LINK
+        assets.push(Asset({
+            currency: Currency.wrap(USDC_ADDRESS),
+            targetPercentage: 4000,
+            minThreshold: 100,
+            maxThreshold: 200
+        }));
+        
+        assets.push(Asset({
+            currency: Currency.wrap(WETH_ADDRESS),
+            targetPercentage: 3000,
+            minThreshold: 100,
+            maxThreshold: 200
+        }));
+        
+        assets.push(Asset({
+            currency: Currency.wrap(WBTC_ADDRESS),
+            targetPercentage: 2000,
+            minThreshold: 100,
+            maxThreshold: 200
+        }));
+        
+        assets.push(Asset({
+            currency: Currency.wrap(LINK_ADDRESS),
+            targetPercentage: 1000,
+            minThreshold: 100,
+            maxThreshold: 200
+        }));
+        
+        initializeStrategy();
+    }
+    
+    function initializeStrategy() internal {
+        InEuint128 memory window = CFT.createInEuint128(200, msg.sender);
+        InEuint128 memory spread = CFT.createInEuint128(20, msg.sender);
+        InEuint128 memory slippage = CFT.createInEuint128(100, msg.sender);
+        
+        hook.createStrategy(strategyId, 2000, window, spread, slippage);
+        
+        // Set all allocations
+        for (uint i = 0; i < assets.length; i++) {
+            InEuint128 memory target = CFT.createInEuint128(
+                assets[i].targetPercentage,
+                msg.sender
+            );
+            InEuint128 memory minThresh = CFT.createInEuint128(
+                assets[i].minThreshold,
+                msg.sender
+            );
+            InEuint128 memory maxThresh = CFT.createInEuint128(
+                assets[i].maxThreshold,
+                msg.sender
+            );
+            
+            hook.setTargetAllocation(
+                strategyId,
+                assets[i].currency,
+                target,
+                minThresh,
+                maxThresh
+            );
+        }
+    }
+    
+    function updateAllPositions(uint256[] calldata amounts) external {
+        require(amounts.length == assets.length, "Invalid amounts");
+        
+        for (uint i = 0; i < assets.length; i++) {
+            InEuint128 memory position = CFT.createInEuint128(
+                amounts[i],
+                msg.sender
+            );
+            hook.setEncryptedPosition(strategyId, assets[i].currency, position);
+        }
+    }
+    
+    function autoRebalance() external {
+        hook.calculateRebalancing(strategyId);
+        hook.executeRebalancing(strategyId);
+    }
+}
+```
+
+---
+
+## DAO Treasury Management
+
+Using governance strategies for DAO treasury rebalancing.
+
+```solidity
+contract DAOTreasuryRebalancer {
+    Umbra Finance public hook;
+    bytes32 public governanceStrategyId;
+    
+    mapping(address => bool) public daoMembers;
+    mapping(bytes32 => mapping(address => bool)) public hasVoted;
+    mapping(bytes32 => uint256) public voteCount;
+    
+    uint256 public constant QUORUM = 5; // Minimum votes needed
+    
+    constructor(address _hook) {
+        hook = UmbraFinance(_hook);
+        governanceStrategyId = keccak256("dao-treasury");
+        
+        // Initialize DAO members
+        daoMembers[msg.sender] = true;
+    }
+    
+    function createGovernanceStrategy() external {
+        require(daoMembers[msg.sender], "Not a DAO member");
+        
+        InEuint128 memory window = CFT.createInEuint128(500, msg.sender);
+        InEuint128 memory spread = CFT.createInEuint128(50, msg.sender);
+        InEuint128 memory slippage = CFT.createInEuint128(25, msg.sender);
+        
+        hook.createGovernanceStrategy(
+            governanceStrategyId,
+            5000, // Rebalance every ~17 hours (assuming 12s blocks)
+            window,
+            spread,
+            slippage
+        );
+    }
+    
+    function proposeAllocation(
+        Currency currency,
+        uint256 targetPercentage,
+        uint256 minThreshold,
+        uint256 maxThreshold
+    ) external returns (bytes32 proposalId) {
+        require(daoMembers[msg.sender], "Not a DAO member");
+        
+        proposalId = keccak256(
+            abi.encodePacked(
+                currency,
+                targetPercentage,
+                block.timestamp
+            )
+        );
+        
+        // Store proposal details (simplified)
+        return proposalId;
+    }
+    
+    function voteOnProposal(bytes32 proposalId) external {
+        require(daoMembers[msg.sender], "Not a DAO member");
+        require(!hasVoted[proposalId][msg.sender], "Already voted");
+        
+        hasVoted[proposalId][msg.sender] = true;
+        voteCount[proposalId]++;
+        
+        hook.voteOnStrategy(governanceStrategyId);
+    }
+    
+    function executeProposal(
+        bytes32 proposalId,
+        Currency currency,
+        uint256 targetPercentage,
+        uint256 minThreshold,
+        uint256 maxThreshold
+    ) external {
+        require(voteCount[proposalId] >= QUORUM, "Quorum not reached");
+        
+        InEuint128 memory target = CFT.createInEuint128(
+            targetPercentage,
+            msg.sender
+        );
+        InEuint128 memory minThresh = CFT.createInEuint128(
+            minThreshold,
+            msg.sender
+        );
+        InEuint128 memory maxThresh = CFT.createInEuint128(
+            maxThreshold,
+            msg.sender
+        );
+        
+        hook.setTargetAllocation(
+            governanceStrategyId,
+            currency,
+            target,
+            minThresh,
+            maxThresh
+        );
+    }
+}
+```
+
+---
+
+## Automated Rebalancing Bot
+
+A bot that automatically rebalances when thresholds are exceeded.
+
+```solidity
+contract RebalancingBot {
+    Umbra Finance public hook;
+    bytes32 public strategyId;
+    
+    uint256 public lastCheck;
+    uint256 public checkInterval = 100; // Check every 100 blocks
+    
+    event RebalanceTriggered(uint256 blockNumber);
+    event RebalanceSkipped(uint256 blockNumber, string reason);
+    
+    constructor(address _hook, bytes32 _strategyId) {
+        hook = UmbraFinance(_hook);
+        strategyId = _strategyId;
+        lastCheck = block.number;
+    }
+    
+    function checkAndRebalance() external {
+        require(
+            block.number >= lastCheck + checkInterval,
+            "Too soon to check"
+        );
+        
+        lastCheck = block.number;
+        
+        // Calculate if rebalancing is needed
+        bool calculated = hook.calculateRebalancing(strategyId);
+        
+        if (!calculated) {
+            emit RebalanceSkipped(block.number, "Calculation failed");
+            return;
+        }
+        
+        // Execute rebalancing
+        bool executed = hook.executeRebalancing(strategyId);
+        
+        if (executed) {
+            emit RebalanceTriggered(block.number);
+        } else {
+            emit RebalanceSkipped(block.number, "Execution failed");
+        }
+    }
+    
+    function setCheckInterval(uint256 _interval) external {
+        checkInterval = _interval;
+    }
+}
+```
+
+---
+
+## Dynamic Allocation Adjustment
+
+Adjusting allocations based on market conditions.
+
+```solidity
+contract DynamicAllocationStrategy {
+    Umbra Finance public hook;
+    bytes32 public strategyId;
+    
+    Currency public stablecoin;
+    Currency public volatile;
+    
+    // Market regime: 0 = bull, 1 = neutral, 2 = bear
+    uint8 public marketRegime = 1;
+    
+    constructor(address _hook, address _stable, address _volatile) {
+        hook = UmbraFinance(_hook);
+        strategyId = keccak256("dynamic-strategy");
+        
+        stablecoin = Currency.wrap(_stable);
+        volatile = Currency.wrap(_volatile);
+        
+        InEuint128 memory window = CFT.createInEuint128(150, msg.sender);
+        InEuint128 memory spread = CFT.createInEuint128(15, msg.sender);
+        InEuint128 memory slippage = CFT.createInEuint128(75, msg.sender);
+        
+        hook.createStrategy(strategyId, 1500, window, spread, slippage);
+        
+        // Start with neutral allocation
+        updateAllocation();
+    }
+    
+    function setMarketRegime(uint8 _regime) external {
+        require(_regime <= 2, "Invalid regime");
+        marketRegime = _regime;
+        updateAllocation();
+    }
+    
+    function updateAllocation() internal {
+        uint256 stablePercentage;
+        uint256 volatilePercentage;
+        
+        if (marketRegime == 0) {
+            // Bull market: 30% stable, 70% volatile
+            stablePercentage = 3000;
+            volatilePercentage = 7000;
+        } else if (marketRegime == 1) {
+            // Neutral: 50% stable, 50% volatile
+            stablePercentage = 5000;
+            volatilePercentage = 5000;
+        } else {
+            // Bear market: 70% stable, 30% volatile
+            stablePercentage = 7000;
+            volatilePercentage = 3000;
+        }
+        
+        // Set stablecoin allocation
+        InEuint128 memory stableTarget = CFT.createInEuint128(
+            stablePercentage,
+            msg.sender
+        );
+        InEuint128 memory stableMin = CFT.createInEuint128(150, msg.sender);
+        InEuint128 memory stableMax = CFT.createInEuint128(300, msg.sender);
+        
+        hook.setTargetAllocation(
+            strategyId,
+            stablecoin,
+            stableTarget,
+            stableMin,
+            stableMax
+        );
+        
+        // Set volatile asset allocation
+        InEuint128 memory volatileTarget = CFT.createInEuint128(
+            volatilePercentage,
+            msg.sender
+        );
+        InEuint128 memory volatileMin = CFT.createInEuint128(150, msg.sender);
+        InEuint128 memory volatileMax = CFT.createInEuint128(300, msg.sender);
+        
+        hook.setTargetAllocation(
+            strategyId,
+            volatile,
+            volatileTarget,
+            volatileMin,
+            volatileMax
+        );
+    }
+    
+    function rebalanceToNewRegime() external {
+        hook.calculateRebalancing(strategyId);
+        hook.executeRebalancing(strategyId);
+    }
+}
+```
+
+---
+
+## Testing Example
+
+Complete test suite example using Foundry.
+
+```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "forge-std/Test.sol";
+import {UmbraFinance} from "../src/UmbraFinance.sol";
+import {Currency} from "v4-core/types/Currency.sol";
+import {CFT} from "fhenix-contracts/FHE.sol";
+
+contract RebalancingTest is Test {
+    Umbra Finance hook;
+    bytes32 strategyId;
+    
+    Currency usdc;
+    Currency weth;
+    
+    address user = address(0x1);
+    
+    function setUp() public {
+        // Deploy hook
+        hook = new UmbraFinance(POOL_MANAGER);
+        
+        // Setup currencies
+        usdc = Currency.wrap(address(0x2));
+        weth = Currency.wrap(address(0x3));
+        
+        strategyId = keccak256("test-strategy");
+    }
+    
+    function testCreateStrategy() public {
+        vm.startPrank(user);
+        
+        InEuint128 memory window = CFT.createInEuint128(100, user);
+        InEuint128 memory spread = CFT.createInEuint128(10, user);
+        InEuint128 memory slippage = CFT.createInEuint128(50, user);
+        
+        bool success = hook.createStrategy(
+            strategyId,
+            1000,
+            window,
+            spread,
+            slippage
+        );
+        
+        assertTrue(success);
+        
+        RebalancingStrategy memory strategy = hook.getStrategy(strategyId);
+        assertEq(strategy.owner, user);
+        assertEq(strategy.rebalanceFrequency, 1000);
+        assertTrue(strategy.isActive);
+        
+        vm.stopPrank();
+    }
+    
+    function testSetAllocation() public {
+        vm.startPrank(user);
+        
+        // Create strategy first
+        testCreateStrategy();
+        
+        // Set 60% USDC allocation
+        InEuint128 memory target = CFT.createInEuint128(6000, user);
+        InEuint128 memory minThresh = CFT.createInEuint128(100, user);
+        InEuint128 memory maxThresh = CFT.createInEuint128(200, user);
+        
+        hook.setTargetAllocation(
+            strategyId,
+            usdc,
+            target,
+            minThresh,
+            maxThresh
+        );
+        
+        EncryptedTargetAllocation[] memory allocations = 
+            hook.getTargetAllocations(strategyId);
+        
+        assertEq(allocations.length, 1);
+        assertTrue(allocations[0].isActive);
+        
+        vm.stopPrank();
+    }
+    
+    function testFullRebalancingCycle() public {
+        vm.startPrank(user);
+        
+        // Setup strategy and allocations
+        testSetAllocation();
+        
+        // Set positions
+        InEuint128 memory usdcPos = CFT.createInEuint128(1000000e6, user);
+        InEuint128 memory wethPos = CFT.createInEuint128(10e18, user);
+        
+        hook.setEncryptedPosition(strategyId, usdc, usdcPos);
+        hook.setEncryptedPosition(strategyId, weth, wethPos);
+        
+        // Calculate rebalancing
+        bool calculated = hook.calculateRebalancing(strategyId);
+        assertTrue(calculated);
+        
+        // Execute rebalancing
+        bool executed = hook.executeRebalancing(strategyId);
+        assertTrue(executed);
+        
+        vm.stopPrank();
+    }
+}
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  **Pro Tip**: Always test your strategies on a testnet before deploying to mainnet. Use the Fhenix Helium testnet for FHE testing.
+</Callout>
+
+<Callout type="warning">
+  **Security**: Never hardcode private keys or sensitive data. Always use environment variables and proper key management.
+</Callout>
+
+## Next Steps
+
+- **[Security](/docs/security)** - Learn security best practices
+- **[FAQ](/docs/faq)** - Common questions and troubleshooting
+- **[GitHub](https://github.com/Umbra-Finance/core)** - View the complete source code

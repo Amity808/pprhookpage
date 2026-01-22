@@ -1,0 +1,586 @@
+# API Reference
+
+Complete API documentation for Umbra Finance smart contract.
+
+## Strategy Management
+
+### createStrategy
+
+Create a new rebalancing strategy with encrypted parameters.
+
+```solidity
+function createStrategy(
+    bytes32 strategyId,
+    uint256 rebalanceFrequency,
+    InEuint128 calldata executionWindow,
+    InEuint128 calldata spreadBlocks,
+    InEuint128 calldata maxSlippage
+) external returns (bool)
+```
+
+**Parameters:**
+- `strategyId` - Unique identifier for the strategy
+- `rebalanceFrequency` - Minimum blocks between rebalances
+- `executionWindow` - Encrypted execution window size
+- `spreadBlocks` - Encrypted number of blocks to spread execution
+- `maxSlippage` - Encrypted maximum slippage tolerance
+
+**Returns:**
+- `bool` - True if strategy created successfully
+
+**Example:**
+```solidity
+bytes32 strategyId = keccak256("institutional-portfolio");
+InEuint128 memory window = CFT.createInEuint128(100, msg.sender);
+InEuint128 memory spread = CFT.createInEuint128(10, msg.sender);
+InEuint128 memory slippage = CFT.createInEuint128(50, msg.sender); // 0.5%
+
+bool success = hook.createStrategy(
+    strategyId,
+    1000, // Rebalance every 1000 blocks
+    window,
+    spread,
+    slippage
+);
+```
+
+**Events:**
+```solidity
+event StrategyCreated(
+    bytes32 indexed strategyId,
+    address indexed owner,
+    uint256 rebalanceFrequency
+);
+```
+
+---
+
+### getStrategy
+
+Retrieve strategy details.
+
+```solidity
+function getStrategy(bytes32 strategyId) 
+    external 
+    view 
+    returns (RebalancingStrategy memory)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+
+**Returns:**
+- `RebalancingStrategy` - Strategy struct with all details
+
+**Example:**
+```solidity
+RebalancingStrategy memory strategy = hook.getStrategy(strategyId);
+console.log("Owner:", strategy.owner);
+console.log("Frequency:", strategy.rebalanceFrequency);
+console.log("Active:", strategy.isActive);
+```
+
+---
+
+### createGovernanceStrategy
+
+Create a DAO-controlled governance strategy.
+
+```solidity
+function createGovernanceStrategy(
+    bytes32 strategyId,
+    uint256 rebalanceFrequency,
+    InEuint128 calldata executionWindow,
+    InEuint128 calldata spreadBlocks,
+    InEuint128 calldata maxSlippage
+) external returns (bool)
+```
+
+**Parameters:**
+- Same as `createStrategy`
+
+**Returns:**
+- `bool` - True if governance strategy created
+
+**Example:**
+```solidity
+bytes32 daoStrategyId = keccak256("dao-treasury");
+bool success = hook.createGovernanceStrategy(
+    daoStrategyId,
+    5000, // Rebalance every 5000 blocks
+    window,
+    spread,
+    slippage
+);
+```
+
+**Events:**
+```solidity
+event GovernanceStrategyCreated(
+    bytes32 indexed strategyId,
+    address indexed creator
+);
+```
+
+---
+
+## Encrypted Allocations
+
+### setTargetAllocation
+
+Set encrypted target allocation for an asset.
+
+```solidity
+function setTargetAllocation(
+    bytes32 strategyId,
+    Currency currency,
+    InEuint128 calldata targetPercentage,
+    InEuint128 calldata minThreshold,
+    InEuint128 calldata maxThreshold
+) external
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `currency` - Asset currency
+- `targetPercentage` - Encrypted target percentage (basis points, 0-10000)
+- `minThreshold` - Encrypted minimum deviation threshold
+- `maxThreshold` - Encrypted maximum deviation threshold
+
+**Example:**
+```solidity
+// Set 50% target allocation for USDC
+Currency usdc = Currency.wrap(address(0x...));
+InEuint128 memory target = CFT.createInEuint128(5000, msg.sender); // 50%
+InEuint128 memory minThresh = CFT.createInEuint128(100, msg.sender); // 1%
+InEuint128 memory maxThresh = CFT.createInEuint128(200, msg.sender); // 2%
+
+hook.setTargetAllocation(
+    strategyId,
+    usdc,
+    target,
+    minThresh,
+    maxThresh
+);
+```
+
+**Events:**
+```solidity
+event TargetAllocationSet(
+    bytes32 indexed strategyId,
+    Currency indexed currency
+);
+```
+
+---
+
+### getTargetAllocations
+
+Get all target allocations for a strategy.
+
+```solidity
+function getTargetAllocations(bytes32 strategyId) 
+    external 
+    view 
+    returns (EncryptedTargetAllocation[] memory)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+
+**Returns:**
+- `EncryptedTargetAllocation[]` - Array of encrypted allocations
+
+**Example:**
+```solidity
+EncryptedTargetAllocation[] memory allocations = 
+    hook.getTargetAllocations(strategyId);
+
+for (uint i = 0; i < allocations.length; i++) {
+    console.log("Currency:", Currency.unwrap(allocations[i].currency));
+    console.log("Active:", allocations[i].isActive);
+}
+```
+
+---
+
+## Position Management
+
+### setEncryptedPosition
+
+Update encrypted position for an asset.
+
+```solidity
+function setEncryptedPosition(
+    bytes32 strategyId,
+    Currency currency,
+    InEuint128 calldata position
+) external
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `currency` - Asset currency
+- `position` - Encrypted position amount
+
+**Example:**
+```solidity
+// Update USDC position to 1,000,000
+InEuint128 memory position = CFT.createInEuint128(1000000e6, msg.sender);
+hook.setEncryptedPosition(strategyId, usdc, position);
+```
+
+**Events:**
+```solidity
+event EncryptedPositionSet(
+    bytes32 indexed strategyId,
+    Currency indexed currency
+);
+```
+
+---
+
+### getEncryptedPosition
+
+Retrieve encrypted position for an asset.
+
+```solidity
+function getEncryptedPosition(
+    bytes32 strategyId,
+    Currency currency
+) external view returns (euint128)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `currency` - Asset currency
+
+**Returns:**
+- `euint128` - Encrypted position value
+
+**Example:**
+```solidity
+euint128 encryptedPosition = hook.getEncryptedPosition(strategyId, usdc);
+// Position remains encrypted
+```
+
+---
+
+### revealPosition
+
+Reveal decrypted position (requires permission).
+
+```solidity
+function revealPosition(
+    bytes32 strategyId,
+    Currency currency,
+    Permission calldata permission
+) external view returns (uint256)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `currency` - Asset currency
+- `permission` - Decryption permission proof
+
+**Returns:**
+- `uint256` - Decrypted position value
+
+**Example:**
+```solidity
+// Only authorized users can reveal
+Permission memory perm = getDecryptionPermission();
+uint256 actualPosition = hook.revealPosition(strategyId, usdc, perm);
+console.log("Actual USDC position:", actualPosition);
+```
+
+---
+
+## Rebalancing Execution
+
+### calculateRebalancing
+
+Calculate encrypted trade deltas for rebalancing.
+
+```solidity
+function calculateRebalancing(bytes32 strategyId) 
+    external 
+    returns (bool)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+
+**Returns:**
+- `bool` - True if calculation successful
+
+**Example:**
+```solidity
+bool calculated = hook.calculateRebalancing(strategyId);
+require(calculated, "Calculation failed");
+```
+
+**Events:**
+```solidity
+event RebalancingCalculated(
+    bytes32 indexed strategyId,
+    uint256 timestamp
+);
+```
+
+---
+
+### executeRebalancing
+
+Execute the calculated rebalancing trades.
+
+```solidity
+function executeRebalancing(bytes32 strategyId) 
+    external 
+    returns (bool)
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+
+**Returns:**
+- `bool` - True if execution successful
+
+**Example:**
+```solidity
+// Calculate first
+hook.calculateRebalancing(strategyId);
+
+// Then execute
+bool executed = hook.executeRebalancing(strategyId);
+require(executed, "Execution failed");
+```
+
+**Events:**
+```solidity
+event RebalancingExecuted(
+    bytes32 indexed strategyId,
+    uint256 blockNumber,
+    uint256 gasUsed
+);
+```
+
+---
+
+## Hook Functions
+
+### beforeSwap
+
+Called before each swap in Uniswap v4.
+
+```solidity
+function beforeSwap(
+    address sender,
+    PoolKey calldata key,
+    IPoolManager.SwapParams calldata params,
+    bytes calldata hookData
+) external override returns (bytes4)
+```
+
+**Parameters:**
+- `sender` - Swap initiator
+- `key` - Pool key
+- `params` - Swap parameters
+- `hookData` - Custom hook data
+
+**Returns:**
+- `bytes4` - Hook selector
+
+**Hook Data Format:**
+```solidity
+// Encode strategy ID in hookData
+bytes memory hookData = abi.encode(strategyId);
+```
+
+---
+
+### afterSwap
+
+Called after each swap in Uniswap v4.
+
+```solidity
+function afterSwap(
+    address sender,
+    PoolKey calldata key,
+    IPoolManager.SwapParams calldata params,
+    BalanceDelta delta,
+    bytes calldata hookData
+) external override returns (bytes4)
+```
+
+**Parameters:**
+- `sender` - Swap initiator
+- `key` - Pool key
+- `params` - Swap parameters
+- `delta` - Balance changes
+- `hookData` - Custom hook data
+
+**Returns:**
+- `bytes4` - Hook selector
+
+**Events:**
+```solidity
+event SwapExecuted(
+    bytes32 indexed strategyId,
+    Currency indexed currencyIn,
+    Currency indexed currencyOut,
+    int256 amountIn,
+    int256 amountOut
+);
+```
+
+---
+
+## Governance Functions
+
+### voteOnStrategy
+
+Vote on a governance strategy proposal.
+
+```solidity
+function voteOnStrategy(bytes32 strategyId) external
+```
+
+**Parameters:**
+- `strategyId` - Governance strategy identifier
+
+**Example:**
+```solidity
+// DAO members can vote
+hook.voteOnStrategy(daoStrategyId);
+```
+
+**Events:**
+```solidity
+event StrategyVoted(
+    bytes32 indexed strategyId,
+    address indexed voter,
+    uint256 timestamp
+);
+```
+
+---
+
+## Access Control
+
+### grantPermission
+
+Grant permission to an address.
+
+```solidity
+function grantPermission(
+    bytes32 strategyId,
+    address account,
+    PermissionLevel level
+) external
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `account` - Address to grant permission
+- `level` - Permission level (VIEWER, EXECUTOR, MANAGER, OWNER)
+
+**Example:**
+```solidity
+// Grant executor permission
+hook.grantPermission(
+    strategyId,
+    executorAddress,
+    PermissionLevel.EXECUTOR
+);
+```
+
+---
+
+### revokePermission
+
+Revoke permission from an address.
+
+```solidity
+function revokePermission(
+    bytes32 strategyId,
+    address account
+) external
+```
+
+**Parameters:**
+- `strategyId` - Strategy identifier
+- `account` - Address to revoke permission
+
+**Example:**
+```solidity
+hook.revokePermission(strategyId, oldExecutor);
+```
+
+---
+
+## Events
+
+### Complete Event Reference
+
+```solidity
+// Strategy Events
+event StrategyCreated(bytes32 indexed strategyId, address indexed owner, uint256 rebalanceFrequency);
+event GovernanceStrategyCreated(bytes32 indexed strategyId, address indexed creator);
+event StrategyVoted(bytes32 indexed strategyId, address indexed voter, uint256 timestamp);
+
+// Allocation Events
+event TargetAllocationSet(bytes32 indexed strategyId, Currency indexed currency);
+event EncryptedPositionSet(bytes32 indexed strategyId, Currency indexed currency);
+
+// Execution Events
+event RebalancingCalculated(bytes32 indexed strategyId, uint256 timestamp);
+event RebalancingExecuted(bytes32 indexed strategyId, uint256 blockNumber, uint256 gasUsed);
+event SwapExecuted(bytes32 indexed strategyId, Currency indexed currencyIn, Currency indexed currencyOut, int256 amountIn, int256 amountOut);
+
+// Security Events
+event PermissionGranted(bytes32 indexed strategyId, address indexed account, PermissionLevel level);
+event PermissionRevoked(bytes32 indexed strategyId, address indexed account);
+event MEVAttemptBlocked(bytes32 indexed strategyId, address indexed attacker);
+```
+
+---
+
+## Error Reference
+
+```solidity
+// Strategy Errors
+error StrategyNotFound(bytes32 strategyId);
+error StrategyAlreadyExists(bytes32 strategyId);
+error StrategyNotActive(bytes32 strategyId);
+
+// Permission Errors
+error Unauthorized(address caller, bytes32 strategyId);
+error InsufficientPermission(address caller, PermissionLevel required);
+
+// Execution Errors
+error ExecutionWindowClosed(bytes32 strategyId);
+error RebalanceFrequencyNotMet(bytes32 strategyId, uint256 blocksRemaining);
+error SlippageExceeded(uint256 expected, uint256 actual);
+
+// Security Errors
+error ReentrancyDetected(bytes32 strategyId);
+error MEVProtectionTriggered(address caller);
+error InvalidEncryptedValue();
+```
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  **Gas Optimization**: Batch multiple operations in a single transaction to save on gas costs. For example, set multiple allocations before calling `calculateRebalancing`.
+</Callout>
+
+<Callout type="warning">
+  **Security**: Always verify permissions before calling sensitive functions. The hook enforces strict access control to protect your strategies.
+</Callout>
+
+## Next Steps
+
+- **[Examples](/docs/examples)** - See real-world usage patterns
+- **[Security](/docs/security)** - Learn about security best practices
+- **[FAQ](/docs/faq)** - Common questions and answers

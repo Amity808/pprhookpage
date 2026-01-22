@@ -6,7 +6,7 @@ export default function BreakthroughSection() {
           <div className="md:w-1/3 flex flex-col gap-4 sticky top-24">
             <h2 className="text-3xl font-bold text-white tracking-tight">Breakthrough: Three Technologies Converge</h2>
             <p className="text-[#9da1b9]">
-              ConfidentialRebalancingHook sits at the intersection of three major technological shifts, creating a unique opportunity for institutional alpha.
+              Umbra finance sits at the intersection of three major technological shifts, creating a unique opportunity for institutional alpha.
             </p>
           </div>
           

@@ -1,0 +1,183 @@
+# Getting Started
+
+This guide will help you get started with Umbra Finance in just a few minutes.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** 18 or higher
+- **Foundry** (for smart contract development)
+- **Fhenix FHE environment** (for encryption capabilities)
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Umbra-Finance/core.git
+cd fhe-hook-template
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Install Foundry
+
+If you don't have Foundry installed:
+
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
+
+### 4. Compile Contracts
+
+```bash
+forge build
+```
+
+### 5. Run Tests
+
+Verify everything is working correctly:
+
+```bash
+forge test
+```
+
+You should see all 28 tests passing:
+
+```bash
+Ran 28 tests for test/UmbraFinance.t.sol:UmbraFinanceTest
+[PASS] testAccessControl() (gas: 835169)
+[PASS] testActualSwapExecution() (gas: 2205823)
+...
+Suite result: ok. 28 passed; 0 failed; 0 skipped
+```
+
+## Basic Usage
+
+Here's a simple example to get you started:
+
+```solidity
+import {UmbraFinance} from "./src/UmbraFinance.sol";
+import {IPoolManager} from "v4-core/interfaces/IPoolManager.sol";
+
+// Deploy the hook
+Umbra Finance hook = new UmbraFinance(poolManager);
+
+// Create a strategy
+bytes32 strategyId = keccak256("my-strategy");
+hook.createStrategy(
+    strategyId,
+    100,              // rebalanceFrequency
+    executionWindow,  // encrypted execution window
+    spreadBlocks,     // encrypted spread blocks
+    maxSlippage       // encrypted max slippage
+);
+
+// Set encrypted target allocation (50% allocation)
+InEuint128 memory targetPercentage = CFT.createInEuint128(5000, user);
+hook.setTargetAllocation(
+    strategyId,
+    currency,
+    targetPercentage,
+    minThreshold,
+    maxThreshold
+);
+
+// Set encrypted current position
+InEuint128 memory position = CFT.createInEuint128(1000000, user);
+hook.setEncryptedPosition(strategyId, currency, position);
+
+// Calculate and execute rebalancing
+hook.calculateRebalancing(strategyId);
+hook.executeRebalancing(strategyId);
+```
+
+## Environment Setup
+
+### Fhenix Configuration
+
+Create a `.env` file in your project root:
+
+```bash
+# Network Configuration
+RPC_URL=https://sepolia.infura.io/v3/your_key # Sepolia or Arbitrum Sepolia
+CHAIN_ID=11155111 # 11155111 for Sepolia or 421614 for Arb Sepolia
+
+# Private Keys (NEVER commit these!)
+PRIVATE_KEY=your_private_key_here
+
+# Pool Manager Address
+POOL_MANAGER_ADDRESS=0x... # Sepolia or Arbitrum Sepolia
+```
+
+### Network Configuration
+
+Add the network to your `foundry.toml`:
+
+```toml
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.24"
+
+[rpc_endpoints]
+sepolia = "${RPC_URL}"
+arbitrum_sepolia = "${RPC_URL}"
+
+[etherscan]
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
+arbitrum_sepolia = { key = "${ARB_ETHERSCAN_API_KEY}" }
+```
+
+## Next Steps
+
+Now that you have Umbra Finance set up, you can:
+
+1. **Explore the Architecture** - Learn how FHE powers confidential rebalancing
+2. **Review API Reference** - Deep dive into all available functions
+3. **Check Examples** - See real-world usage patterns
+4. **Understand Security** - Learn about our security measures
+
+import { Callout } from 'nextra/components'
+
+<Callout type="info">
+  **Need Help?** Join our [Discord community](https://discord.gg/umbrafinance) or check out the [GitHub Issues](https://github.com/Umbra-Finance/core/issues).
+</Callout>
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue: `forge: command not found`**
+
+Solution: Make sure Foundry is installed and in your PATH:
+
+```bash
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
+```
+
+**Issue: FHE library errors**
+
+Solution: Ensure you're using the correct Fhenix network and have the FHE library properly configured.
+
+**Issue: Test failures**
+
+Solution: Make sure all dependencies are installed and you're using Solidity 0.8.24:
+
+```bash
+forge clean
+forge build
+forge test
+```
+
+<Callout type="warning">
+  **Important**: Never commit your private keys or sensitive environment variables to version control!
+</Callout>

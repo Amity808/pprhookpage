@@ -21,9 +21,14 @@ export default function Hero() {
                   <button className="flex cursor-pointer items-center justify-center rounded-lg h-12 px-6 bg-primary hover:bg-primary-dark text-white text-base font-bold shadow-[0_0_20px_rgba(19,55,236,0.3)] transition-all">
                     Get Started
                   </button>
-                  <button className="flex cursor-pointer items-center justify-center rounded-lg h-12 px-6 bg-[#282b39] hover:bg-[#323647] border border-[#3b3f54] text-white text-base font-bold transition-colors">
+                  <a
+                    href="https://calendly.com/bolarinwamuhdsodiq0/30min"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex cursor-pointer items-center justify-center rounded-lg h-12 px-6 bg-[#282b39] hover:bg-[#323647] border border-[#3b3f54] text-white text-base font-bold transition-colors"
+                  >
                     Schedule Demo
-                  </button>
+                  </a>
                 </div>
                 <div className="flex items-center justify-center lg:justify-start gap-6 pt-4 text-sm text-gray-500 font-medium">
                   <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[18px] text-primary">check_circle</span> Audited</span>
