@@ -11,6 +11,8 @@ export default function Navbar() {
     { href: "/solution", label: "Solution" },
     { href: "/features", label: "Technology" },
     { href: "/#company", label: "Company" },
+    { href: "/docs", label: "Docs" },
+    { href: "/testnet", label: "Test" },
   ];
 
   const isActive = (href: string) => {

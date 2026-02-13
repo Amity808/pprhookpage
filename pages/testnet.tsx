@@ -8,6 +8,7 @@ import {
     toBytes,
     encodeAbiParameters,
     parseAbiParameters,
+    parseAbi,
     zeroHash,
     zeroAddress,
     type Address
@@ -22,19 +23,21 @@ const CONFIG = {
     TOKEN1_ADDRESS: "0xEa20820719c5Ae04Bce9A098E209f4d8C60DAF06", // MockTokenB
 };
 
-const HOOK_ABI = [
-    "function createStrategy(bytes32 strategyId, uint256 rebalanceFrequency, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) executionWindow, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) spreadBlocks, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) maxSlippage) external returns (bool)",
-    "function setTargetAllocation(bytes32 strategyId, address currency, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) targetPercentage, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) minThreshold, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) maxThreshold) external",
-    "function setEncryptedPosition(bytes32 strategyId, address currency, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) position) external",
+const HOOK_ABI = parseAbi([
+    "struct EncryptedValue { uint256 ctHash; uint8 securityZone; uint8 utype; bytes signature; }",
+    "struct Strategy { bytes32 strategyId; address owner; bool isActive; uint256 lastRebalanceBlock; uint256 rebalanceFrequency; EncryptedValue executionWindow; EncryptedValue spreadBlocks; uint256 priorityFee; EncryptedValue maxSlippage; }",
+    "function createStrategy(bytes32 strategyId, uint256 rebalanceFrequency, EncryptedValue executionWindow, EncryptedValue spreadBlocks, EncryptedValue maxSlippage) external returns (bool)",
+    "function setTargetAllocation(bytes32 strategyId, address currency, EncryptedValue targetPercentage, EncryptedValue minThreshold, EncryptedValue maxThreshold) external",
+    "function setEncryptedPosition(bytes32 strategyId, address currency, EncryptedValue position) external",
     "function enableCrossPoolCoordination(bytes32 strategyId, bytes32[] pools) external",
-    "function getStrategy(bytes32 strategyId) external view returns (tuple(bytes32 strategyId, address owner, bool isActive, uint256 lastRebalanceBlock, uint256 rebalanceFrequency, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) executionWindow, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) spreadBlocks, uint256 priorityFee, tuple(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature) maxSlippage))",
+    "function getStrategy(bytes32 strategyId) external view returns (Strategy)",
     "function poolStrategies(bytes32 poolId) external view returns (bytes32[])",
-];
+]);
 
-const ERC20_ABI = [
+const ERC20_ABI = parseAbi([
     "function balanceOf(address account) external view returns (uint256)",
     "function symbol() external view returns (string)",
-];
+]);
 
 type LogEntry = {
     type: 'info' | 'success' | 'error' | 'warning';
@@ -49,7 +52,7 @@ export default function Testnet() {
 
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(false);
-    const [strategyId, setStrategyId] = useState('');
+    const [strategyId, setStrategyId] = useState<`0x${string}`>('0x');
     const [token0Balance, setToken0Balance] = useState('0');
     const [token1Balance, setToken1Balance] = useState('0');
     const [strategyExists, setStrategyExists] = useState(false);
@@ -194,11 +197,14 @@ export default function Testnet() {
             const { cofhejs, Encryptable } = await import('cofhejs/web');
 
             addLog('info', 'Encrypting execution parameters...');
-            const encryptedValues = await cofhejs.encrypt([
-                Encryptable.uint128(100n), // executionWindow: 100 blocks
-                Encryptable.uint128(10n),  // spreadBlocks: 10 blocks
-                Encryptable.uint128(500n), // maxSlippage: 500 basis points (5%)
-            ]);
+            const encryptedValues = await cofhejs.encrypt(
+                [
+                    Encryptable.uint128(100n), // executionWindow: 100 blocks
+                    Encryptable.uint128(10n),  // spreadBlocks: 10 blocks
+                    Encryptable.uint128(500n), // maxSlippage: 500 basis points (5%)
+                ],
+                (state: string) => addLog('info', `Encryption state: ${state}`)
+            );
 
             const encryptedArray = Array.isArray(encryptedValues)
                 ? encryptedValues
@@ -252,11 +258,14 @@ export default function Testnet() {
             const { cofhejs, Encryptable } = await import('cofhejs/web');
 
             addLog('info', 'Encrypting allocation parameters...');
-            const encryptedValues = await cofhejs.encrypt([
-                Encryptable.uint128(5000n), // targetPercentage: 50%
-                Encryptable.uint128(100n),  // minThreshold: 1%
-                Encryptable.uint128(1000n), // maxThreshold: 10%
-            ]);
+            const encryptedValues = await cofhejs.encrypt(
+                [
+                    Encryptable.uint128(5000n), // targetPercentage: 50%
+                    Encryptable.uint128(100n),  // minThreshold: 1%
+                    Encryptable.uint128(1000n), // maxThreshold: 10%
+                ],
+                (state: string) => addLog('info', `Encryption state: ${state}`)
+            );
 
             const encryptedArray = Array.isArray(encryptedValues)
                 ? encryptedValues
@@ -274,8 +283,8 @@ export default function Testnet() {
                 abi: HOOK_ABI,
                 functionName: 'setTargetAllocation',
                 args: [
-                    strategyId,
-                    tokenAddress,
+                    strategyId as `0x${string}`,
+                    tokenAddress as `0x${string}`,
                     encryptedArray[0],
                     encryptedArray[1],
                     encryptedArray[2],
@@ -310,9 +319,10 @@ export default function Testnet() {
             const positionValue = parseEther(amount);
             addLog('info', `Encrypting position value: ${amount} tokens...`);
 
-            const encryptedValues = await cofhejs.encrypt([
-                Encryptable.uint128(positionValue),
-            ]);
+            const encryptedValues = await cofhejs.encrypt(
+                [Encryptable.uint128(positionValue)],
+                (state: string) => addLog('info', `Encryption state: ${state}`)
+            );
 
             const encryptedArray = Array.isArray(encryptedValues)
                 ? encryptedValues
@@ -329,7 +339,7 @@ export default function Testnet() {
                 address: CONFIG.HOOK_ADDRESS as `0x${string}`,
                 abi: HOOK_ABI,
                 functionName: 'setEncryptedPosition',
-                args: [strategyId, tokenAddress, encryptedArray[0]],
+                args: [strategyId as `0x${string}`, tokenAddress as `0x${string}`, encryptedArray[0]],
             });
 
             addLog('info', `Transaction: ${hash}`);
