@@ -1,8 +1,8 @@
 export default function ComparisonTable() {
   return (
     <section id="comparison">
-      <h2 className="text-3xl font-bold text-white mb-8 text-center">Why Confidential Rebalancing?</h2>
-      
+      <h2 className="text-3xl font-bold text-white mb-8 text-center">Why Umbra Finance?</h2>
+
       <div className="overflow-x-auto rounded-xl border border-[#282b39] bg-surface-dark">
         <table className="w-full text-left border-collapse">
           <thead>

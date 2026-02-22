@@ -695,7 +695,7 @@ export default function Testnet() {
                 <div className="flex justify-between items-center mb-8">
                     <div>
                         <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent-uniswap bg-clip-text text-transparent">
-                            FHE Rebalancing Hook
+                            Umbra Finance
                         </h1>
                         <p className="text-slate-400 mt-2">Sepolia Testnet Dashboard</p>
                     </div>

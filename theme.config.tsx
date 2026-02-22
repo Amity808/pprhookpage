@@ -32,7 +32,7 @@ const config: DocsThemeConfig = {
                 <a href="https://github.com/Amity808/fhe-hook-template" target="_blank">
                     Umbra finance
                 </a>
-                . Built with ❤️ for the future of confidential DeFi.
+                . Built with ❤️ by Umbra Finance for the future of confidential DeFi.
             </span>
         ),
     },

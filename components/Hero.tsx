@@ -12,7 +12,7 @@ export default function Hero() {
                   Production Ready
                 </div>
                 <h1 className="text-white text-4xl md:text-5xl lg:text-6xl font-black leading-[1.1] tracking-[-0.02em]">
-                  Confidential Rebalancing on <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-uniswap to-purple-500">Uniswap v4</span>
+                  Umbra Finance on <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-uniswap to-purple-500">Uniswap v4</span>
                 </h1>
                 <p className="text-gray-400 text-lg md:text-xl font-normal leading-relaxed max-w-[640px] mx-auto lg:mx-0">
                   The first FHE-powered solution for institutional DeFi. Eliminate annual losses from front-running and MEV with fully encrypted order execution.

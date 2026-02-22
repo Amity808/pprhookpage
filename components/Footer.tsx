@@ -59,7 +59,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="w-full flex justify-center mt-12 border-t border-[#282b39] pt-6">
-        <p className="text-gray-600 text-xs">© 2023 Confidential Rebalancing Hook. All rights reserved.</p>
+        <p className="text-gray-600 text-xs">© 2023 Umbra Finance. All rights reserved.</p>
       </div>
     </footer>
   );

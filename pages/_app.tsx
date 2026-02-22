@@ -20,7 +20,7 @@ import { sepolia } from 'wagmi/chains';
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 
 const config = getDefaultConfig({
-    appName: 'Flinch - FHE Rebalancing Hook',
+    appName: 'Umbra Finance',
     projectId: 'YOUR_PROJECT_ID', // Get from https://cloud.walletconnect.com/
     chains: [sepolia],
     ssr: true,

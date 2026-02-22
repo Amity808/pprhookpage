@@ -12,7 +12,7 @@ export default function SolutionHero() {
           </div>
 
           <h1 className="text-4xl font-black leading-tight tracking-tight text-white md:text-5xl lg:text-6xl">
-            The Only Solution Without Trade-offs: <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-primary">Confidential Rebalancing</span> on Uniswap v4
+            The Only Solution Without Trade-offs: <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-primary">Umbra Finance</span> on Uniswap v4
           </h1>
 
           <p className="text-lg text-[#9da1b9] max-w-xl">
