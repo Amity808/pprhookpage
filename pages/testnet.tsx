@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi';
 import {
@@ -9,18 +9,19 @@ import {
     encodeAbiParameters,
     parseAbiParameters,
     parseAbi,
-    zeroHash,
-    zeroAddress,
+    encodePacked,
     type Address
 } from 'viem';
 
 // Contract addresses configuration
 const CONFIG = {
-    HOOK_ADDRESS: "0x29917CE538f0CCbd370C9db265e721595Af14Ac0",
-    POOL_MANAGER_ADDRESS: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
-    SWAP_ROUTER_ADDRESS: "0xf13D190e9117920c703d79B5F33732e10049b115",
-    TOKEN0_ADDRESS: "0x2794a0b7187BFCd81D2b6d05E8a6e6cAE3F97fFa", // MockTokenA
-    TOKEN1_ADDRESS: "0xEa20820719c5Ae04Bce9A098E209f4d8C60DAF06", // MockTokenB
+    HOOK_ADDRESS: "0x797283907437277Ff05FF929c871f7517BdecaC0" as const,
+    POOL_MANAGER_ADDRESS: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543" as const,
+    SWAP_ROUTER_ADDRESS: "0xf13D190e9117920c703d79B5F33732e10049b115" as const,
+    TOKEN0_ADDRESS: "0x2794a0b7187BFCd81D2b6d05E8a6e6cAE3F97fFa" as const, // MockTokenA
+    TOKEN1_ADDRESS: "0xEa20820719c5Ae04Bce9A098E209f4d8C60DAF06" as const, // MockTokenB
+    LP_FEE: 3000,
+    TICK_SPACING: 60,
 };
 
 const HOOK_ABI = parseAbi([
@@ -32,17 +33,56 @@ const HOOK_ABI = parseAbi([
     "function enableCrossPoolCoordination(bytes32 strategyId, bytes32[] pools) external",
     "function getStrategy(bytes32 strategyId) external view returns (Strategy)",
     "function poolStrategies(bytes32 poolId) external view returns (bytes32[])",
+    "event RebalancingExecuted(bytes32 indexed strategyId, uint256 blockNumber)",
+    "event FHEOperationFailed(bytes32 indexed strategyId, string operation, string reason)",
 ]);
 
 const ERC20_ABI = parseAbi([
     "function balanceOf(address account) external view returns (uint256)",
     "function symbol() external view returns (string)",
+    "function approve(address spender, uint256 amount) external returns (bool)",
+    "function allowance(address owner, address spender) external view returns (uint256)",
 ]);
+
+const SWAP_ROUTER_ABI = [
+    {
+        name: 'swap',
+        type: 'function',
+        stateMutability: 'payable',
+        inputs: [
+            { name: 'amountSpecified', type: 'int256' },
+            { name: 'amountLimit', type: 'uint256' },
+            { name: 'zeroForOne', type: 'bool' },
+            {
+                name: 'poolKey',
+                type: 'tuple',
+                components: [
+                    { name: 'currency0', type: 'address' },
+                    { name: 'currency1', type: 'address' },
+                    { name: 'fee', type: 'uint24' },
+                    { name: 'tickSpacing', type: 'int24' },
+                    { name: 'hooks', type: 'address' },
+                ],
+            },
+            { name: 'hookData', type: 'bytes' },
+            { name: 'receiver', type: 'address' },
+            { name: 'deadline', type: 'uint256' },
+        ],
+        outputs: [{ name: '', type: 'int256' }],
+    },
+] as const;
 
 type LogEntry = {
     type: 'info' | 'success' | 'error' | 'warning';
     message: string;
     timestamp: Date;
+};
+
+type Toast = {
+    id: number;
+    type: 'success' | 'error' | 'info' | 'warning';
+    title: string;
+    message: string;
 };
 
 export default function Testnet() {
@@ -52,15 +92,38 @@ export default function Testnet() {
 
     const [logs, setLogs] = useState<LogEntry[]>([]);
     const [loading, setLoading] = useState(false);
-    const [strategyId, setStrategyId] = useState<`0x${string}`>('0x');
+    const [loadingStep, setLoadingStep] = useState('');
+    const [strategyId, _setStrategyId] = useState<`0x${string}`>('0x');
+    const strategyIdRef = useRef<`0x${string}`>('0x');
+    const setStrategyId = (id: `0x${string}`) => { strategyIdRef.current = id; _setStrategyId(id); };
     const [token0Balance, setToken0Balance] = useState('0');
     const [token1Balance, setToken1Balance] = useState('0');
     const [strategyExists, setStrategyExists] = useState(false);
     const [cofheInitialized, setCofheInitialized] = useState(false);
     const [mounted, setMounted] = useState(false);
+    const [swapAmount, setSwapAmount] = useState('0.1');
+    const [zeroForOne, setZeroForOne] = useState(true);
+    const [fheConfirmed, setFheConfirmed] = useState(false);
+    const [lastSwapTx, setLastSwapTx] = useState('');
+    const [toasts, setToasts] = useState<Toast[]>([]);
+    const [runAllProgress, setRunAllProgress] = useState(0);
+    const [isRunningAll, setIsRunningAll] = useState(false);
 
     useEffect(() => {
         setMounted(true);
+    }, []);
+
+    // --- Toast Notifications ---
+    const showToast = useCallback((type: Toast['type'], title: string, message: string) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, type, title, message }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 5000);
+    }, []);
+
+    const dismissToast = useCallback((id: number) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
     }, []);
 
     const addLog = (type: LogEntry['type'], message: string) => {
@@ -84,19 +147,12 @@ export default function Testnet() {
     const initializeCofhejs = async () => {
         try {
             addLog('info', 'Initializing FHE encryption library (cofhejs)...');
-
-            // Import cofhejs dynamically (browser version)
             const { cofhejs } = await import('cofhejs/web');
 
-            // Use wagmi's wallet client directly
             if (!walletClient) {
                 throw new Error('Wallet client not available');
             }
 
-            // cofhejs may need a specific initialization for browser
-            // For now, we'll attempt initialization without ethers
-            // This might need adjustment based on cofhejs browser API
-            // Use initializeWithViem for better compatibility with wagmi/viem
             await cofhejs.initializeWithViem({
                 environment: 'TESTNET',
                 viemClient: publicClient,
@@ -105,95 +161,89 @@ export default function Testnet() {
 
             setCofheInitialized(true);
             addLog('success', '✓ FHE encryption initialized successfully');
+            showToast('success', 'FHE Ready', 'Encryption library initialized');
         } catch (error: any) {
             addLog('error', `Failed to initialize cofhejs: ${error.message}`);
+            showToast('error', 'FHE Init Failed', error.message);
             addLog('warning', 'Some features may not work without FHE initialization');
         }
     };
 
     const loadBalances = async () => {
         if (!publicClient || !address) return;
-
         try {
-            const token0Contract = {
-                address: CONFIG.TOKEN0_ADDRESS as `0x${string}`,
-                abi: ERC20_ABI,
-            };
-
-            const token1Contract = {
-                address: CONFIG.TOKEN1_ADDRESS as `0x${string}`,
-                abi: ERC20_ABI,
-            };
-
-            const [balance0, balance1] = await Promise.all([
+            const [bal0, bal1] = await Promise.all([
                 publicClient.readContract({
-                    ...token0Contract,
+                    address: CONFIG.TOKEN0_ADDRESS,
+                    abi: ERC20_ABI,
                     functionName: 'balanceOf',
                     args: [address],
                 }),
                 publicClient.readContract({
-                    ...token1Contract,
+                    address: CONFIG.TOKEN1_ADDRESS,
+                    abi: ERC20_ABI,
                     functionName: 'balanceOf',
                     args: [address],
                 }),
             ]);
 
-            setToken0Balance(formatEther(balance0 as bigint));
-            setToken1Balance(formatEther(balance1 as bigint));
-        } catch (error) {
-            console.error('Error loading balances:', error);
+            setToken0Balance(formatEther(bal0 as bigint));
+            setToken1Balance(formatEther(bal1 as bigint));
+        } catch (error: any) {
+            addLog('warning', `Could not load balances: ${error.message}`);
         }
     };
 
-    const generateStrategyId = () => {
-        const id = `fhe-strategy-${Date.now()}`;
-        const hash = keccak256(toBytes(id));
-        setStrategyId(hash);
-        addLog('info', `Generated strategy ID: ${hash}`);
+    const generateStrategyId = (): `0x${string}` | undefined => {
+        if (!address) return undefined;
+        const id = keccak256(
+            encodeAbiParameters(parseAbiParameters('address, uint256'), [address, BigInt(Date.now())])
+        );
+        setStrategyId(id);
+        addLog('info', `Generated strategy ID: ${id}`);
+        showToast('info', 'Strategy ID', 'New strategy ID generated');
+        return id;
     };
 
     const checkStrategyExists = async () => {
-        if (!publicClient || !strategyId) {
-            addLog('error', 'Please generate a strategy ID first');
-            return;
-        }
-
+        if (!publicClient || !strategyIdRef.current || strategyIdRef.current === '0x') return;
         setLoading(true);
         try {
-            const result = await publicClient.readContract({
-                address: CONFIG.HOOK_ADDRESS as `0x${string}`,
+            addLog('info', 'Checking if strategy exists...');
+            const strategy = await publicClient.readContract({
+                address: CONFIG.HOOK_ADDRESS,
                 abi: HOOK_ABI,
                 functionName: 'getStrategy',
-                args: [strategyId as `0x${string}`],
+                args: [strategyIdRef.current],
             }) as any;
 
-            const exists = result.strategyId !== zeroHash && result.owner !== zeroAddress;
-            setStrategyExists(exists);
-
-            if (exists) {
-                addLog('success', `Strategy exists! Owner: ${result.owner}`);
-                addLog('info', `Active: ${result.isActive}`);
+            if (strategy && strategy.isActive) {
+                setStrategyExists(true);
+                addLog('success', '✓ Strategy exists and is active');
+                showToast('success', 'Strategy Found', 'Strategy is active on-chain');
             } else {
+                setStrategyExists(false);
                 addLog('info', 'Strategy does not exist yet');
+                showToast('info', 'Not Found', 'Strategy needs to be created');
             }
         } catch (error: any) {
-            addLog('error', `Error checking strategy: ${error.message}`);
+            setStrategyExists(false);
+            addLog('info', 'Strategy does not exist (will create new one)');
         } finally {
             setLoading(false);
         }
     };
 
     const createStrategy = async () => {
-        if (!walletClient || !strategyId || !cofheInitialized) {
+        if (!walletClient || !strategyIdRef.current || strategyIdRef.current === '0x' || !cofheInitialized) {
             addLog('error', 'Please connect wallet, generate strategy ID, and ensure FHE is initialized');
             return;
         }
 
         setLoading(true);
+        setLoadingStep('Creating strategy...');
         try {
             addLog('info', 'Creating strategy with encrypted parameters...');
-
-            // Import cofhejs for encryption
             const { cofhejs, Encryptable } = await import('cofhejs/web');
 
             addLog('info', 'Encrypting execution parameters...');
@@ -218,11 +268,11 @@ export default function Testnet() {
             addLog('info', 'Submitting transaction...');
 
             const hash = await walletClient.writeContract({
-                address: CONFIG.HOOK_ADDRESS as `0x${string}`,
+                address: CONFIG.HOOK_ADDRESS,
                 abi: HOOK_ABI,
                 functionName: 'createStrategy',
                 args: [
-                    strategyId,
+                    strategyIdRef.current,
                     10n, // rebalanceFrequency
                     encryptedArray[0],
                     encryptedArray[1],
@@ -232,37 +282,46 @@ export default function Testnet() {
 
             addLog('info', `Transaction submitted: ${hash}`);
 
-            // Wait for confirmation
             if (publicClient) {
-                await publicClient.waitForTransactionReceipt({ hash });
+                await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
                 addLog('success', '✓ Strategy created successfully!');
                 setStrategyExists(true);
+                showToast('success', 'Strategy Created', 'FHE strategy is now on-chain');
             }
         } catch (error: any) {
-            addLog('error', `Failed to create strategy: ${error.message}`);
+            if (error.message?.includes('already exists') || error.message?.includes('Strategy already exists')) {
+                addLog('warning', 'Strategy already exists, continuing...');
+                setStrategyExists(true);
+                showToast('info', 'Strategy Exists', 'Using existing strategy');
+            } else {
+                addLog('error', `Failed to create strategy: ${error.message}`);
+                showToast('error', 'Strategy Failed', error.message?.slice(0, 80));
+                throw error;
+            }
         } finally {
             setLoading(false);
+            setLoadingStep('');
         }
     };
 
     const setTargetAllocation = async (tokenAddress: string, tokenName: string) => {
-        if (!walletClient || !strategyId || !cofheInitialized) {
+        if (!walletClient || !strategyIdRef.current || strategyIdRef.current === '0x' || !cofheInitialized) {
             addLog('error', 'Please ensure wallet is connected and strategy exists');
             return;
         }
 
         setLoading(true);
+        setLoadingStep(`Setting ${tokenName} allocation...`);
         try {
             addLog('info', `Setting target allocation for ${tokenName}...`);
-
             const { cofhejs, Encryptable } = await import('cofhejs/web');
 
             addLog('info', 'Encrypting allocation parameters...');
             const encryptedValues = await cofhejs.encrypt(
                 [
-                    Encryptable.uint128(5000n), // targetPercentage: 50%
-                    Encryptable.uint128(100n),  // minThreshold: 1%
-                    Encryptable.uint128(1000n), // maxThreshold: 10%
+                    Encryptable.uint128(5000n), // 50% target
+                    Encryptable.uint128(100n),  // 1% min threshold
+                    Encryptable.uint128(1000n), // 10% max threshold
                 ],
                 (state: string) => addLog('info', `Encryption state: ${state}`)
             );
@@ -276,15 +335,14 @@ export default function Testnet() {
             }
 
             addLog('success', '✓ Parameters encrypted');
-            addLog('info', 'Submitting transaction...');
 
             const hash = await walletClient.writeContract({
-                address: CONFIG.HOOK_ADDRESS as `0x${string}`,
+                address: CONFIG.HOOK_ADDRESS,
                 abi: HOOK_ABI,
                 functionName: 'setTargetAllocation',
                 args: [
-                    strategyId as `0x${string}`,
-                    tokenAddress as `0x${string}`,
+                    strategyIdRef.current,
+                    tokenAddress as Address,
                     encryptedArray[0],
                     encryptedArray[1],
                     encryptedArray[2],
@@ -292,32 +350,35 @@ export default function Testnet() {
             });
 
             addLog('info', `Transaction: ${hash}`);
-
             if (publicClient) {
-                await publicClient.waitForTransactionReceipt({ hash });
-                addLog('success', `✓ Target allocation set for ${tokenName}!`);
+                await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
+                addLog('success', `✓ ${tokenName} allocation set successfully!`);
+                showToast('success', 'Allocation Set', `${tokenName} target allocation configured`);
             }
         } catch (error: any) {
-            addLog('error', `Failed to set allocation: ${error.message}`);
+            addLog('error', `Failed to set ${tokenName} allocation: ${error.message}`);
+            showToast('error', 'Allocation Failed', error.message?.slice(0, 80));
+            throw error;
         } finally {
             setLoading(false);
+            setLoadingStep('');
         }
     };
 
     const setEncryptedPosition = async (tokenAddress: string, tokenName: string, amount: string) => {
-        if (!walletClient || !strategyId || !cofheInitialized) {
-            addLog('error', 'Please ensure wallet is connected and strategy exists');
+        if (!walletClient || !strategyIdRef.current || strategyIdRef.current === '0x' || !cofheInitialized) {
+            addLog('error', 'Wallet, strategy, and FHE must be ready');
             return;
         }
 
         setLoading(true);
+        setLoadingStep(`Setting ${tokenName} position...`);
         try {
             addLog('info', `Setting encrypted position for ${tokenName}...`);
-
             const { cofhejs, Encryptable } = await import('cofhejs/web');
 
             const positionValue = parseEther(amount);
-            addLog('info', `Encrypting position value: ${amount} tokens...`);
+            addLog('info', `Encrypting position value: ${positionValue.toString()}`);
 
             const encryptedValues = await cofhejs.encrypt(
                 [Encryptable.uint128(positionValue)],
@@ -332,41 +393,45 @@ export default function Testnet() {
                 throw new Error('Encryption failed');
             }
 
-            addLog('success', '✓ Position encrypted');
-            addLog('info', 'Submitting transaction...');
+            addLog('success', '✓ Value encrypted');
 
             const hash = await walletClient.writeContract({
-                address: CONFIG.HOOK_ADDRESS as `0x${string}`,
+                address: CONFIG.HOOK_ADDRESS,
                 abi: HOOK_ABI,
                 functionName: 'setEncryptedPosition',
-                args: [strategyId as `0x${string}`, tokenAddress as `0x${string}`, encryptedArray[0]],
+                args: [
+                    strategyIdRef.current,
+                    tokenAddress as Address,
+                    encryptedArray[0],
+                ],
             });
 
             addLog('info', `Transaction: ${hash}`);
-
             if (publicClient) {
-                await publicClient.waitForTransactionReceipt({ hash });
-                addLog('success', `✓ Encrypted position set for ${tokenName}!`);
+                await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
+                addLog('success', `✓ ${tokenName} position set!`);
+                showToast('success', 'Position Set', `${tokenName} encrypted position stored`);
             }
         } catch (error: any) {
-            addLog('error', `Failed to set position: ${error.message}`);
+            addLog('error', `Failed to set ${tokenName} position: ${error.message}`);
+            showToast('error', 'Position Failed', error.message?.slice(0, 80));
+            throw error;
         } finally {
             setLoading(false);
+            setLoadingStep('');
         }
     };
 
     const registerPool = async () => {
-        if (!walletClient || !strategyId) {
+        if (!walletClient || !strategyIdRef.current || strategyIdRef.current === '0x') {
             addLog('error', 'Please ensure wallet is connected and strategy exists');
             return;
         }
 
         setLoading(true);
+        setLoadingStep('Registering pool...');
         try {
             addLog('info', 'Calculating pool ID...');
-
-            const lpFee = 3000;
-            const tickSpacing = 60;
 
             // Sort currencies
             const addr0 = BigInt(CONFIG.TOKEN0_ADDRESS);
@@ -378,7 +443,7 @@ export default function Testnet() {
             // Calculate pool ID
             const encoded = encodeAbiParameters(
                 parseAbiParameters('address, address, uint24, int24, address'),
-                [c0 as Address, c1 as Address, lpFee, tickSpacing, CONFIG.HOOK_ADDRESS as Address]
+                [c0 as Address, c1 as Address, CONFIG.LP_FEE, CONFIG.TICK_SPACING, CONFIG.HOOK_ADDRESS as Address]
             );
             const poolId = keccak256(encoded);
 
@@ -386,22 +451,218 @@ export default function Testnet() {
             addLog('info', 'Registering pool with strategy...');
 
             const hash = await walletClient.writeContract({
-                address: CONFIG.HOOK_ADDRESS as `0x${string}`,
+                address: CONFIG.HOOK_ADDRESS,
                 abi: HOOK_ABI,
                 functionName: 'enableCrossPoolCoordination',
-                args: [strategyId, [poolId]],
+                args: [strategyIdRef.current, [poolId]],
             });
 
             addLog('info', `Transaction: ${hash}`);
 
             if (publicClient) {
-                await publicClient.waitForTransactionReceipt({ hash });
+                await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
                 addLog('success', '✓ Pool registered successfully!');
+                showToast('success', 'Pool Registered', 'Hook will now execute FHE during swaps');
             }
         } catch (error: any) {
             addLog('error', `Failed to register pool: ${error.message}`);
+            showToast('error', 'Registration Failed', error.message?.slice(0, 80));
+            throw error;
         } finally {
             setLoading(false);
+            setLoadingStep('');
+        }
+    };
+
+    // --- Approve token for swap router ---
+    const approveTokenForSwap = async () => {
+        if (!walletClient || !publicClient || !address) return;
+
+        setLoading(true);
+        setLoadingStep('Approving token...');
+        try {
+            const tokenAddress = zeroForOne ? CONFIG.TOKEN0_ADDRESS : CONFIG.TOKEN1_ADDRESS;
+            const tokenName = zeroForOne ? 'Token0' : 'Token1';
+
+            addLog('info', `Checking ${tokenName} allowance for Swap Router...`);
+
+            const allowance = await publicClient.readContract({
+                address: tokenAddress,
+                abi: ERC20_ABI,
+                functionName: 'allowance',
+                args: [address, CONFIG.SWAP_ROUTER_ADDRESS],
+            }) as bigint;
+
+            const amount = parseEther(swapAmount);
+            if (allowance >= amount) {
+                addLog('success', `✓ ${tokenName} already approved`);
+                showToast('info', 'Already Approved', `${tokenName} allowance is sufficient`);
+                return;
+            }
+
+            addLog('info', `Approving ${tokenName} for Swap Router...`);
+            const hash = await walletClient.writeContract({
+                address: tokenAddress,
+                abi: ERC20_ABI,
+                functionName: 'approve',
+                args: [CONFIG.SWAP_ROUTER_ADDRESS, BigInt("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")],
+            });
+
+            addLog('info', `Approval tx: ${hash}`);
+            await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
+            addLog('success', `✓ ${tokenName} approved for Swap Router`);
+            showToast('success', 'Token Approved', `${tokenName} ready for swapping`);
+        } catch (error: any) {
+            addLog('error', `Approval failed: ${error.message}`);
+            showToast('error', 'Approval Failed', error.message?.slice(0, 80));
+        } finally {
+            setLoading(false);
+            setLoadingStep('');
+        }
+    };
+
+    // --- Perform Swap with FHE hookData ---
+    const performSwap = async () => {
+        if (!walletClient || !publicClient || !address || !strategyIdRef.current || strategyIdRef.current === '0x') {
+            addLog('error', 'Wallet, strategy must be ready');
+            return;
+        }
+
+        setLoading(true);
+        setLoadingStep('Executing swap...');
+        setFheConfirmed(false);
+        try {
+            const amount = parseEther(swapAmount);
+
+            // Sort currencies
+            const addr0 = BigInt(CONFIG.TOKEN0_ADDRESS);
+            const addr1 = BigInt(CONFIG.TOKEN1_ADDRESS);
+            const [c0, c1] = addr0 < addr1
+                ? [CONFIG.TOKEN0_ADDRESS, CONFIG.TOKEN1_ADDRESS]
+                : [CONFIG.TOKEN1_ADDRESS, CONFIG.TOKEN0_ADDRESS];
+
+            const poolKey = {
+                currency0: c0 as Address,
+                currency1: c1 as Address,
+                fee: CONFIG.LP_FEE,
+                tickSpacing: CONFIG.TICK_SPACING,
+                hooks: CONFIG.HOOK_ADDRESS as Address,
+            };
+
+            // Encode strategyId as hookData (32 bytes)
+            const hookData = encodeAbiParameters(
+                parseAbiParameters('bytes32'),
+                [strategyIdRef.current]
+            );
+
+            const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
+
+            addLog('info', `Swapping ${swapAmount} ${zeroForOne ? 'Token0 → Token1' : 'Token1 → Token0'}`);
+            addLog('info', `hookData (strategyId): ${strategyIdRef.current}`);
+
+            const hash = await walletClient.writeContract({
+                address: CONFIG.SWAP_ROUTER_ADDRESS,
+                abi: SWAP_ROUTER_ABI,
+                functionName: 'swap',
+                args: [
+                    -amount, // amountSpecified (negative = exact input)
+                    0n,      // amountLimit (0 = no slippage protection for testing)
+                    zeroForOne,
+                    poolKey,
+                    hookData,
+                    address,
+                    deadline,
+                ],
+                gas: 5000000n,
+            });
+
+            addLog('info', `Swap tx: ${hash}`);
+            setLastSwapTx(hash);
+
+            const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000, pollingInterval: 3_000 });
+            addLog('success', `✓ Swap confirmed! Gas used: ${receipt.gasUsed.toString()}`);
+
+            // Check for RebalancingExecuted event
+            const rebalancingTopic = keccak256(toBytes('RebalancingExecuted(bytes32,uint256)'));
+            const fheEvents = receipt.logs.filter(
+                log => log.address.toLowerCase() === CONFIG.HOOK_ADDRESS.toLowerCase() &&
+                    log.topics[0] === rebalancingTopic
+            );
+
+            if (fheEvents.length > 0) {
+                setFheConfirmed(true);
+                addLog('success', '🔐 FHE operations CONFIRMED via RebalancingExecuted event!');
+                showToast('success', 'FHE Confirmed! 🔐', 'Encrypted rebalancing executed on-chain');
+            } else {
+                addLog('warning', '⚠ Swap succeeded but no RebalancingExecuted event detected');
+                showToast('warning', 'Swap Done', 'No FHE event detected — check strategy state');
+            }
+
+            // Refresh balances
+            await loadBalances();
+        } catch (error: any) {
+            addLog('error', `Swap failed: ${error.message}`);
+            showToast('error', 'Swap Failed', error.message?.slice(0, 100));
+        } finally {
+            setLoading(false);
+            setLoadingStep('');
+        }
+    };
+
+    // --- Run Full Flow ---
+    const runFullFlow = async () => {
+        if (!walletClient || !cofheInitialized || !address) {
+            showToast('error', 'Not Ready', 'Connect wallet and wait for FHE initialization');
+            return;
+        }
+
+        setIsRunningAll(true);
+        setRunAllProgress(0);
+
+        // Generate strategy ID first (synchronously via ref)
+        const newId = generateStrategyId();
+        if (!newId) {
+            showToast('error', 'Error', 'Could not generate strategy ID');
+            setIsRunningAll(false);
+            return;
+        }
+
+        // Wait for React state to settle
+        await new Promise(r => setTimeout(r, 500));
+
+        const steps = [
+            { label: 'Creating strategy', fn: createStrategy },
+            { label: 'Setting Token0 allocation', fn: () => setTargetAllocation(CONFIG.TOKEN0_ADDRESS, 'Token0') },
+            { label: 'Setting Token1 allocation', fn: () => setTargetAllocation(CONFIG.TOKEN1_ADDRESS, 'Token1') },
+            { label: 'Setting Token0 position', fn: () => setEncryptedPosition(CONFIG.TOKEN0_ADDRESS, 'Token0', '1000000') },
+            { label: 'Setting Token1 position', fn: () => setEncryptedPosition(CONFIG.TOKEN1_ADDRESS, 'Token1', '1000000') },
+            { label: 'Registering pool', fn: registerPool },
+            { label: 'Approving token', fn: approveTokenForSwap },
+            { label: 'Executing swap with FHE', fn: performSwap },
+        ];
+
+        try {
+            for (let i = 0; i < steps.length; i++) {
+                setRunAllProgress(Math.round(((i) / steps.length) * 100));
+                setLoadingStep(`Step ${i + 1}/${steps.length}: ${steps[i].label}`);
+                addLog('info', `\n=== Step ${i + 1}/${steps.length}: ${steps[i].label} ===`);
+
+                await steps[i].fn();
+
+                // Small delay between steps
+                await new Promise(r => setTimeout(r, 1000));
+            }
+
+            setRunAllProgress(100);
+            showToast('success', 'Full Flow Complete! 🎉', 'All FHE operations executed successfully');
+            addLog('success', '\n=== ✅ Full Flow Completed Successfully! ===');
+        } catch (error: any) {
+            showToast('error', 'Flow Interrupted', `Failed at: ${error.message?.slice(0, 80)}`);
+            addLog('error', `Flow interrupted: ${error.message}`);
+        } finally {
+            setIsRunningAll(false);
+            setLoading(false);
+            setLoadingStep('');
         }
     };
 
@@ -411,6 +672,24 @@ export default function Testnet() {
 
     return (
         <div className="min-h-screen bg-background-dark text-white">
+            {/* Toast Notifications */}
+            <div className="fixed top-4 right-4 z-[100] space-y-3 max-w-sm">
+                {toasts.map(toast => (
+                    <div
+                        key={toast.id}
+                        className={`rounded-lg p-4 shadow-xl border backdrop-blur-lg animate-slide-in cursor-pointer transition-all hover:scale-[1.02] ${toast.type === 'success' ? 'bg-green-500/20 border-green-500/50 text-green-300' :
+                            toast.type === 'error' ? 'bg-red-500/20 border-red-500/50 text-red-300' :
+                                toast.type === 'warning' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300' :
+                                    'bg-blue-500/20 border-blue-500/50 text-blue-300'
+                            }`}
+                        onClick={() => dismissToast(toast.id)}
+                    >
+                        <p className="font-semibold text-sm">{toast.title}</p>
+                        <p className="text-xs mt-1 opacity-80">{toast.message}</p>
+                    </div>
+                ))}
+            </div>
+
             <div className="container mx-auto px-4 py-8 max-w-6xl">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-8">
@@ -431,6 +710,41 @@ export default function Testnet() {
                     </div>
                 )}
 
+                {/* Run All Button */}
+                {isConnected && cofheInitialized && (
+                    <div className="bg-gradient-to-r from-primary/20 to-accent-uniswap/20 backdrop-blur-lg rounded-xl p-6 mb-6 border border-primary/30">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-bold text-white">🚀 One-Click Full Flow</h2>
+                                <p className="text-slate-400 text-sm mt-1">
+                                    Create strategy → Set allocations → Set positions → Register pool → Swap with FHE
+                                </p>
+                            </div>
+                            <button
+                                onClick={runFullFlow}
+                                disabled={loading || isRunningAll}
+                                className="bg-gradient-to-r from-primary to-accent-uniswap hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed px-8 py-3 rounded-lg font-bold text-lg transition-all shadow-lg shadow-primary/25"
+                            >
+                                {isRunningAll ? 'Running...' : 'Run All'}
+                            </button>
+                        </div>
+                        {isRunningAll && (
+                            <div className="mt-4">
+                                <div className="flex justify-between text-xs text-slate-400 mb-1">
+                                    <span>{loadingStep}</span>
+                                    <span>{runAllProgress}%</span>
+                                </div>
+                                <div className="w-full bg-slate-800 rounded-full h-2">
+                                    <div
+                                        className="bg-gradient-to-r from-primary to-accent-uniswap h-2 rounded-full transition-all duration-500"
+                                        style={{ width: `${runAllProgress}%` }}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Configuration Section */}
                 <div className="bg-surface-dark/50 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/10">
                     <h2 className="text-2xl font-bold mb-4 text-primary">Configuration</h2>
@@ -440,18 +754,18 @@ export default function Testnet() {
                             <p className="font-mono text-xs break-all">{CONFIG.HOOK_ADDRESS}</p>
                         </div>
                         <div>
-                            <p className="text-slate-400">Pool Manager:</p>
-                            <p className="font-mono text-xs break-all">{CONFIG.POOL_MANAGER_ADDRESS}</p>
+                            <p className="text-slate-400">Swap Router:</p>
+                            <p className="font-mono text-xs break-all">{CONFIG.SWAP_ROUTER_ADDRESS}</p>
                         </div>
                         <div>
                             <p className="text-slate-400">Token0 (MockTokenA):</p>
                             <p className="font-mono text-xs break-all">{CONFIG.TOKEN0_ADDRESS}</p>
-                            <p className="text-slate-500 text-xs">Balance: {token0Balance}</p>
+                            <p className="text-slate-500 text-xs">Balance: {parseFloat(token0Balance).toFixed(4)}</p>
                         </div>
                         <div>
                             <p className="text-slate-400">Token1 (MockTokenB):</p>
                             <p className="font-mono text-xs break-all">{CONFIG.TOKEN1_ADDRESS}</p>
-                            <p className="text-slate-500 text-xs">Balance: {token1Balance}</p>
+                            <p className="text-slate-500 text-xs">Balance: {parseFloat(token1Balance).toFixed(4)}</p>
                         </div>
                     </div>
                     <div className="mt-4 p-3 bg-slate-900/50 rounded">
@@ -575,16 +889,82 @@ export default function Testnet() {
                     </button>
                 </div>
 
-                {/* Swap Section - Disabled for now */}
-                <div className="bg-slate-800/30 backdrop-blur-lg rounded-xl p-6 mb-6 border border-slate-700/30 opacity-50">
-                    <h2 className="text-2xl font-bold mb-4 text-slate-500">Swap Operations</h2>
-                    <p className="text-slate-500 text-sm mb-4">⚠️ Swap functionality is currently being debugged and will be available soon</p>
-                    <button
-                        disabled
-                        className="w-full bg-slate-700 cursor-not-allowed px-6 py-3 rounded font-semibold"
-                    >
-                        Execute Swap (Coming Soon)
-                    </button>
+                {/* Swap Section */}
+                <div className="bg-surface-dark/50 backdrop-blur-lg rounded-xl p-6 mb-6 border border-white/10">
+                    <h2 className="text-2xl font-bold mb-4 text-primary">Swap Operations</h2>
+                    <p className="text-slate-400 text-sm mb-4">Execute a swap through the UniswapV4 Router — the hook will trigger FHE rebalancing</p>
+
+                    <div className="space-y-4">
+                        {/* Swap Amount */}
+                        <div>
+                            <label className="block text-sm text-slate-400 mb-2">Swap Amount (tokens):</label>
+                            <input
+                                type="text"
+                                value={swapAmount}
+                                onChange={e => setSwapAmount(e.target.value)}
+                                placeholder="0.1"
+                                className="w-full bg-slate-900/50 border border-slate-700 rounded px-4 py-2 font-mono text-sm"
+                            />
+                        </div>
+
+                        {/* Direction Toggle */}
+                        <div>
+                            <label className="block text-sm text-slate-400 mb-2">Direction:</label>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setZeroForOne(true)}
+                                    className={`flex-1 px-4 py-2 rounded font-semibold text-sm transition-colors ${zeroForOne
+                                        ? 'bg-primary text-white'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                        }`}
+                                >
+                                    Token0 → Token1
+                                </button>
+                                <button
+                                    onClick={() => setZeroForOne(false)}
+                                    className={`flex-1 px-4 py-2 rounded font-semibold text-sm transition-colors ${!zeroForOne
+                                        ? 'bg-primary text-white'
+                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                        }`}
+                                >
+                                    Token1 → Token0
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                            <button
+                                onClick={approveTokenForSwap}
+                                disabled={loading}
+                                className="flex-1 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 rounded font-semibold transition-colors"
+                            >
+                                Approve Token
+                            </button>
+                            <button
+                                onClick={performSwap}
+                                disabled={!strategyExists || loading}
+                                className="flex-1 bg-gradient-to-r from-primary to-accent-uniswap hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed px-6 py-3 rounded font-bold transition-all shadow-lg shadow-primary/20"
+                            >
+                                Execute Swap
+                            </button>
+                        </div>
+
+                        {/* FHE Result */}
+                        {lastSwapTx && (
+                            <div className={`rounded-lg p-4 border ${fheConfirmed
+                                ? 'bg-green-500/10 border-green-500/50'
+                                : 'bg-yellow-500/10 border-yellow-500/50'
+                                }`}>
+                                <p className={`font-semibold text-sm ${fheConfirmed ? 'text-green-400' : 'text-yellow-400'}`}>
+                                    {fheConfirmed ? '🔐 FHE Rebalancing Confirmed!' : '⚠ Swap completed, FHE status unknown'}
+                                </p>
+                                <p className="text-xs text-slate-400 mt-1 font-mono break-all">
+                                    Tx: {lastSwapTx}
+                                </p>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Activity Log */}
@@ -622,15 +1002,31 @@ export default function Testnet() {
                     </div>
                 </div>
 
-                {loading && (
+                {loading && !isRunningAll && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
                         <div className="bg-surface-dark rounded-xl p-8 flex flex-col items-center gap-4 border border-white/10">
                             <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
-                            <p className="text-lg font-semibold">Processing transaction...</p>
+                            <p className="text-lg font-semibold">{loadingStep || 'Processing transaction...'}</p>
                         </div>
                     </div>
                 )}
             </div>
+
+            <style jsx>{`
+                @keyframes slide-in {
+                    from {
+                        transform: translateX(100%);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateX(0);
+                        opacity: 1;
+                    }
+                }
+                .animate-slide-in {
+                    animation: slide-in 0.3s ease-out;
+                }
+            `}</style>
         </div>
     );
 }
