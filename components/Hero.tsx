@@ -15,7 +15,7 @@ export default function Hero() {
                   Umbra Finance on <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent-uniswap to-purple-500">Uniswap v4</span>
                 </h1>
                 <p className="text-gray-400 text-lg md:text-xl font-normal leading-relaxed max-w-[640px] mx-auto lg:mx-0">
-                  The first FHE-powered solution for institutional DeFi. Eliminate annual losses from front-running and MEV with fully encrypted order execution.
+                  The first FHE-powered Dark Pool & Rebalancing Hook for institutional DeFi. Eliminate alpha decay, front-running, and MEV with fully encrypted peer-to-peer order execution.
                 </p>
                 <div className="flex flex-wrap gap-4 justify-center lg:justify-start pt-2">
                   <button className="flex cursor-pointer items-center justify-center rounded-lg h-12 px-6 bg-primary hover:bg-primary-dark text-white text-base font-bold shadow-[0_0_20px_rgba(19,55,236,0.3)] transition-all">

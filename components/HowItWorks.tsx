@@ -20,14 +20,14 @@ export default function HowItWorks() {
     },
     {
       icon: "verified",
-      title: "On-chain Verification",
-      description: "The Uniswap v4 Hook verifies the ZK proof on-chain. If valid, the state transition is approved.",
+      title: "P2P Dark Pool Matching",
+      description: "When a public swap hits the Uniswap v4 Pool, our Hook performs homomorphic math on-chain to check for matching Dark Orders.",
       color: "gray",
     },
     {
       icon: "currency_exchange",
-      title: "Secure Rebalance",
-      description: "The hook executes the swap or liquidity adjustment. The exact amounts and strategy remain hidden from public observers and front-runners.",
+      title: "Zero-Slippage Settlement",
+      description: "If a match is found, the Hook settles the trade identically P2P via the v4 PoolManager. The AMM curve is completely bypassed, eliminating slippage.",
       color: "accent-uniswap",
     },
   ];

@@ -9,10 +9,10 @@ export default function Problem() {
                 The <span className="text-red-500">$6.2M</span> Annual Problem
               </h2>
               <p className="text-gray-400 text-lg leading-relaxed">
-                Institutional portfolios lose millions annually to MEV, sandwich attacks, and strategy exposure on public ledgers. Standard rebalancing broadcasts your intent to the entire market before execution.
+                Every parameter you set on transparent AMMs is a public signal. Institutional portfolios lose millions annually to MEV and copycat traders because typical rebalancing broadcasts exactly what you'll buy, sell, and at what price.
               </p>
               <p className="text-gray-400 text-lg leading-relaxed">
-                Our FHE solution reclaims this value by keeping your strategy logic and amounts confidential until settlement.
+                Umbra Finance reclaims this alpha. Using our FHE-encrypted Hook, you can place Dark Orders that anonymously match against public Uniswap v4 flow with zero slippage—keeping your logic completely confidential.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <div className="flex items-center gap-3 p-4 rounded-lg bg-background-dark border border-[#3b3f54]">

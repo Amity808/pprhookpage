@@ -4,7 +4,7 @@ export default function CostOfInaction() {
       <div className="max-w-[960px] mx-auto text-center">
         <h2 className="text-3xl font-bold text-white mb-6">The Cost of Inaction</h2>
         <p className="text-slate-400 mb-12 max-w-2xl mx-auto">
-          Continuing to trade large size on transparent ledgers is a strategic error that compounds over time.
+          Every parameter you set on current AMMs is a public signal. Continuing to execute large rebalancing strategies on transparent ledgers allows MEV bots and copycat traders to profit at your expense.
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-left">

@@ -3,7 +3,7 @@ export default function SolutionCTA() {
     <section className="w-full py-24 px-6 bg-gradient-to-b from-background-dark to-primary/10">
       <div className="mx-auto max-w-[800px] text-center">
         <h2 className="text-4xl font-bold text-white mb-6">Stop leaking alpha today.</h2>
-        <p className="text-lg text-[#9da1b9] mb-10">Join the leading institutions moving their rebalancing logic to a confidential on-chain environment.</p>
+        <p className="text-lg text-[#9da1b9] mb-10">Join the leading institutions moving their rebalancing logic to a zero-slippage, confidential FHE Dark Pool environment.</p>
 
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <a

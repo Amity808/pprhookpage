@@ -22,7 +22,7 @@ export default function Features() {
       <div className="px-5 md:px-10 lg:px-40 flex flex-1 justify-center">
         <div className="flex flex-col max-w-[1200px] flex-1">
           <div className="text-center mb-16">
-            <h2 className="text-white text-3xl md:text-4xl font-bold mb-4">Why Choose ConfidentialHook?</h2>
+            <h2 className="text-white text-3xl md:text-4xl font-bold mb-4">Why Choose Umbra Finance?</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {features.map((feature, index) => (
