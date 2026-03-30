@@ -13,6 +13,7 @@ export default function Navbar() {
     { href: "/#company", label: "Company" },
     { href: "/docs", label: "Docs" },
     { href: "/testnet", label: "Test" },
+    { href: "/demo", label: "SDK Demo" },
   ];
 
   const isActive = (href: string) => {
