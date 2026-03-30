@@ -22,8 +22,61 @@ In DeFi, *every single action*—from placing limit orders to setting Automated 
 
 ---
 
-## 🖥️ Frontend Architecture & Features
+## 🖥️ Architecture & Features
 
+### 🔄 In-Depth Protocol Architecture
+
+```mermaid
+flowchart TD
+    %% -- Subgraphs for architectural boundaries --
+    subgraph Client [🖥️ Frontend Client Application]
+        A[User Input: Order Size & Strategy] -->|Local Execution| B(<b>@cofhe/sdk</b><br/>Encrypts into <i>euint128</i> Ciphertexts)
+        B -->|Client generates| C[\EIP-712 Signature Permit/]
+    end
+
+    subgraph Fhenix [🌐 Fhenix FHE Network]
+        D((Encrypted<br/>On-Chain State))
+    end
+
+    subgraph Backend [🦄 Uniswap v4 Hook & PoolManager]
+        direction TB
+        subgraph Hook [Umbra Confidential Hook]
+            E[Intercepts <code>beforeSwap()</code>]
+            F{<b>Homomorphic Math</b><br/><i>FHE.sub() / FHE.gt()</i><br/>Check for Dark Pool Match}
+        end
+        
+        subgraph AMM [v4 PoolManager ⚡]
+            G([<b>Internal P2P Settlement</b><br/><i>Zero Slippage</i>])
+            H([<b>Public AMM Routing</b><br/><i>Standard Curve</i>])
+        end
+    end
+
+    %% -- Flow Logic --
+    B -->|Sends Tx payload| D
+    D -.->|Feeds Encrypted Data| F
+    
+    %% -- Public Swapper Interaction --
+    I[📡 Public Swapper interacts with AMM pool] -->|Triggers Hook| E
+    E --> F
+    
+    %% -- Settlement Routing --
+    F -->|Match Found| G
+    F -->|No Match| H
+    G --> J[(Update Encrypted Balances natively)]
+    H --> J
+    
+    %% -- Unsealing / EIP-712 --
+    C -.->|Permit allows Selective Reveal| J
+
+    %% -- Professional Styling --
+    style Client fill:#0f172a,stroke:#38bdf8,stroke-width:2px,color:#fff
+    style Fhenix fill:#2e1065,stroke:#a855f7,stroke-width:2px,color:#fff
+    style Backend fill:#4c1d95,stroke:#ec4899,stroke-width:2px,color:#fff
+    style Hook fill:#1e1b4b,stroke:#f472b6,stroke-width:1px,color:#fff
+    style AMM fill:#064e3b,stroke:#10b981,stroke-width:1px,color:#fff
+```
+
+### Frontend Integration
 This dashboard utilizes the `@cofhe/sdk`, `wagmi`, and `viem` to safely abstract the complex cryptographic flows away from the user. 
 
 ### 1. Client-Side Encryption (`@cofhe/sdk`)
@@ -135,7 +188,7 @@ console.log(`Unsealed Balance: ${formatEther(unsealedPosition)}`);
 - **Interactive Dark Pool App:** [https://pprhook.vercel.app/demo](https://pprhook.vercel.app/demo)
 - **Frontend Dashboard (This Repo):** [https://github.com/Amity808/pprhookpage](https://github.com/Amity808/pprhookpage)
 - **Smart Contracts Repo:** [https://github.com/Amity808/fhe-hook-template](https://github.com/Amity808/fhe-hook-template)
-- **Documentation Diagram:** [Canva Concept Diagram](https://www.canva.com/design/DAGzTpLdOSc/4i0IdBI577rFh4nSrodgZA/edit)
+- **Documentation Diagram:** [PITCH DECK](https://www.canva.com/design/DAGzTpLdOSc/4i0IdBI577rFh4nSrodgZA/edit)
 
 ---
 
